@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Đăng nhập · DRM Admin</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+<main class="container" style="max-width:420px; margin-top:8vh">
+  <hgroup>
+    <h1>🔐 DRM Admin</h1>
+    <p>Đăng nhập quản trị</p>
+  </hgroup>
+  {% if error %}<article style="background:#3a1414">⚠ {{ error }}</article>{% endif %}
+  <form method="post" action="/dashboard/login">
+    <label>Email
+      <input type="email" name="email" placeholder="admin@example.com" required>
+    </label>
+    <label>Mật khẩu
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit">Đăng nhập</button>
+  </form>
+  <small class="muted">API docs: <a href="/docs">/docs</a></small>
+</main>
+</body>
+</html>

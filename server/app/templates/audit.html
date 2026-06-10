@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h2>Audit log <small class="muted">(200 gần nhất)</small></h2>
+<table>
+  <thead><tr><th>Thời gian</th><th>User</th><th>Sự kiện</th><th>Kết quả</th><th>Product</th><th>IP</th><th>Mô tả</th></tr></thead>
+  <tbody>
+  {% for e in logs %}
+    <tr>
+      <td class="muted">{{ e.created_at.strftime("%H:%M:%S %d/%m/%y") }}</td>
+      <td>{{ emails.get(e.user_id, "—") }}</td>
+      <td>{{ e.event_type }}</td>
+      <td><span class="pill {{ 'ok' if e.result=='success' else 'bad' }}">{{ e.result }}</span></td>
+      <td>{{ e.product_id or "—" }}</td>
+      <td class="muted">{{ e.ip_address or "—" }}</td>
+      <td class="muted">{{ e.message }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Chưa có log</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

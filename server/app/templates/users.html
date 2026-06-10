@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block title %}Người dùng{% endblock %}
+{% block content %}
+<h2>Người dùng</h2>
+
+<article>
+  <header>Tạo user mới</header>
+  <form method="post" action="/dashboard/users">
+    <div class="grid">
+      <input type="email" name="email" placeholder="email" required>
+      <input name="password" placeholder="mật khẩu (>=8 ký tự)" minlength="8" required>
+      <select name="role"><option value="user">user</option><option value="admin">admin</option></select>
+    </div>
+    <button type="submit">Tạo user</button>
+  </form>
+</article>
+
+<table>
+  <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>App sở hữu</th><th>Cấp quyền</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.role }}</td>
+      <td>
+        {% for pid in owned.get(u.id, []) %}
+          <form method="post" action="/dashboard/users/{{ u.id }}/revoke" style="display:inline;margin:0">
+            <input type="hidden" name="product_id" value="{{ pid }}">
+            <button class="pill ok outline" style="border:0" title="Bấm để thu hồi">{{ pid }} ✕</button>
+          </form>
+        {% else %}<span class="muted">—</span>{% endfor %}
+      </td>
+      <td>
+        <form method="post" action="/dashboard/users/{{ u.id }}/grant" style="margin:0">
+          <fieldset role="group">
+            <select name="product_id" required>
+              {% for p in products %}<option value="{{ p.product_id }}">{{ p.product_id }}</option>{% endfor %}
+            </select>
+            <button type="submit">Cấp</button>
+          </fieldset>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<small class="muted">Bấm vào tên app (màu xanh) ở cột "App sở hữu" để thu hồi quyền.</small>
+{% endblock %}

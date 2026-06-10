@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block title %}Sản phẩm{% endblock %}
+{% block content %}
+<h2>Sản phẩm</h2>
+
+<article>
+  <header>Tạo product mới</header>
+  <form method="post" action="/dashboard/products">
+    <div class="grid">
+      <input name="product_id" placeholder="product_id (vd demo_app)" required pattern="[a-zA-Z0-9_\-]+">
+      <input name="name" placeholder="Tên hiển thị" required>
+      <input name="version" placeholder="1.0.0" value="1.0.0">
+    </div>
+    <button type="submit">Tạo product</button>
+  </form>
+</article>
+
+<table>
+  <thead><tr><th>product_id</th><th>Tên</th><th>Version</th><th>Payload key</th><th>Đăng ký key</th></tr></thead>
+  <tbody>
+  {% for p in products %}
+    <tr>
+      <td><code>{{ p.product_id }}</code></td>
+      <td>{{ p.name }}</td>
+      <td>{{ p.version }}</td>
+      <td>
+        {% if p.product_id in keyed %}<span class="pill ok">đã có</span>
+        {% else %}<span class="pill bad">chưa có</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="/dashboard/products/{{ p.product_id }}/key" style="margin:0">
+          <fieldset role="group">
+            <input name="payload_key_b64" placeholder="dán SECRET_payload_key.b64" required>
+            <button type="submit">Lưu</button>
+          </fieldset>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">Chưa có product</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<small class="muted">Payload key lấy từ file <code>SECRET_payload_key.b64</code> mà Protector sinh khi pack app.</small>
+{% endblock %}

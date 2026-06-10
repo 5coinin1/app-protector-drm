@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Admin{% endblock %} · DRM Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    .grid-stats article { text-align:center; margin:0; }
+    .grid-stats h2 { margin:0; }
+    table { font-size:.9rem; }
+    .muted { color:var(--pico-muted-color); }
+    .pill { padding:.1rem .5rem; border-radius:1rem; font-size:.75rem; }
+    .ok { background:#1b5e20; color:#fff; } .bad { background:#7f1d1d; color:#fff; }
+  </style>
+</head>
+<body>
+<header class="container">
+  <nav>
+    <ul><li><strong>🔐 DRM Admin</strong></li></ul>
+    <ul>
+      <li><a href="/dashboard">Tổng quan</a></li>
+      <li><a href="/dashboard/products">Sản phẩm</a></li>
+      <li><a href="/dashboard/users">Người dùng</a></li>
+      <li><a href="/dashboard/devices">Thiết bị</a></li>
+      <li><a href="/dashboard/audit">Audit</a></li>
+      <li><a href="/dashboard/logout" role="button" class="secondary outline">Đăng xuất</a></li>
+    </ul>
+  </nav>
+  {% if admin %}<small class="muted">Đăng nhập: {{ admin.email }}</small>{% endif %}
+</header>
+<main class="container">
+  {% if msg %}<article style="background:#14321a">✅ {{ msg }}</article>{% endif %}
+  {% if error %}<article style="background:#3a1414">⚠ {{ error }}</article>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block title %}Thiết bị{% endblock %}
+{% block content %}
+<h2>Thiết bị đã đăng ký</h2>
+<table>
+  <thead><tr><th>ID</th><th>User</th><th>Tên máy</th><th>hardware_hash</th><th>Trạng thái</th><th></th></tr></thead>
+  <tbody>
+  {% for dev, email in rows %}
+    <tr>
+      <td>{{ dev.id }}</td>
+      <td>{{ email }}</td>
+      <td>{{ dev.device_name or "—" }}</td>
+      <td><code class="muted">{{ dev.hardware_hash[:20] }}…</code></td>
+      <td>
+        {% if dev.status == 'active' %}<span class="pill ok">active</span>
+        {% else %}<span class="pill bad">revoked</span>{% endif %}
+      </td>
+      <td>
+        {% if dev.status == 'active' %}
+        <form method="post" action="/dashboard/devices/{{ dev.id }}/revoke" style="margin:0">
+          <button class="secondary outline">Thu hồi</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">Chưa có thiết bị nào đăng ký</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

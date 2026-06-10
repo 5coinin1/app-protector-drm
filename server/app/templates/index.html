@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block title %}Tổng quan{% endblock %}
+{% block content %}
+<h2>Tổng quan</h2>
+<div class="grid grid-stats">
+  <article><h2>{{ stats.users }}</h2><small class="muted">Người dùng</small></article>
+  <article><h2>{{ stats.products }}</h2><small class="muted">Sản phẩm</small></article>
+  <article><h2>{{ stats.entitlements }}</h2><small class="muted">Quyền active</small></article>
+  <article><h2>{{ stats.devices }}</h2><small class="muted">Thiết bị active</small></article>
+</div>
+
+<h3>Hoạt động gần đây</h3>
+<table>
+  <thead><tr><th>Thời gian</th><th>Sự kiện</th><th>Kết quả</th><th>Mô tả</th></tr></thead>
+  <tbody>
+  {% for e in recent %}
+    <tr>
+      <td class="muted">{{ e.created_at.strftime("%H:%M:%S %d/%m") }}</td>
+      <td>{{ e.event_type }}</td>
+      <td><span class="pill {{ 'ok' if e.result=='success' else 'bad' }}">{{ e.result }}</span></td>
+      <td class="muted">{{ e.message }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">Chưa có log</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

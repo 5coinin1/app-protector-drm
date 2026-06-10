@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# C / build
+build/
+*.o
+*.obj
+*.exe
+*.dll
+*.a
+
+# Database & data
+server/data/*.db
+server/data/*.seed
+*.sqlite
+*.sqlite3
+
+# Secrets / keys — KHÔNG commit khóa private
+*.pem
+!shared/**/public_key.pem
+*.key
+.env
+secrets/
+# Protector: khóa ký bí mật, payload key, output package
+protector/keys/*.sk
+protector/dist/
+**/SECRET_payload_key.b64
+
+# Desktop client: package đã cài (chứa payload/secret), session token
+desktop/apps/
+desktop/.session.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude local settings cá nhân (giữ riêng)
+.claude/settings.local.json
+.claude
