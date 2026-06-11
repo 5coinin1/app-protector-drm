@@ -1,5 +1,5 @@
 """Admin API: quản lý product, user, entitlement (grant/revoke), xem audit log & device."""
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.audit import log_event
+from ..services.storage import ALLOWED_FILES, is_valid_product_id, package_storage_dir
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -60,6 +61,36 @@ def set_product_key(product_id: str, body: SetKeyIn, db: Session = Depends(get_d
         db.add(ProductKey(product_id=product_id, encrypted_payload_key=body.payload_key_b64))
     db.commit()
     return {"detail": "Đã đăng ký payload key", "product_id": product_id}
+
+
+@router.post("/products/{product_id}/package", status_code=status.HTTP_200_OK)
+def upload_package(
+    product_id: str,
+    payload: UploadFile = File(...),
+    manifest: UploadFile = File(...),
+    public_key: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload các file phát hành của package lên server (developer chạy sau khi pack).
+
+    Client tải về qua GET /me/packages/{id}/{file} (có check entitlement).
+    KHÔNG nhận SECRET_payload_key.b64 — key đăng ký riêng qua /products/{id}/key.
+    """
+    if not is_valid_product_id(product_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="product_id không hợp lệ")
+    if db.scalar(select(Product).where(Product.product_id == product_id)) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product không tồn tại")
+
+    d = package_storage_dir(product_id)
+    d.mkdir(parents=True, exist_ok=True)
+    uploads = {
+        "payload.enc": payload,
+        "manifest.signed.json": manifest,
+        "public_key.pem": public_key,
+    }
+    for name, up in uploads.items():
+        (d / name).write_bytes(up.file.read())
+    return {"detail": "Đã upload package", "product_id": product_id, "files": list(ALLOWED_FILES)}
 
 
 # ---------- Users ----------

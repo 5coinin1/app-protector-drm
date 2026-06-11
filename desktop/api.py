@@ -54,6 +54,42 @@ def get_library(access_token: str) -> list[dict]:
     return r.json()
 
 
+def get_package_info(access_token: str, product_id: str) -> dict:
+    """Thông tin package để cài (danh sách file + size). Raise nếu chưa publish / không sở hữu."""
+    try:
+        r = requests.get(
+            f"{config.SERVER_URL}/me/packages/{product_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=config.HTTP_TIMEOUT,
+        )
+    except requests.RequestException as e:
+        raise NetworkError(str(e))
+    if r.status_code == 401:
+        raise ApiError("Phiên đăng nhập hết hạn, vui lòng đăng nhập lại")
+    if r.status_code != 200:
+        raise ApiError(_detail(r, "Không lấy được thông tin app để cài"))
+    return r.json()
+
+
+def download_package_file(access_token: str, product_id: str, filename: str, dest_path: str) -> None:
+    """Tải 1 file của package về dest_path (stream). Raise NetworkError/ApiError nếu lỗi."""
+    try:
+        r = requests.get(
+            f"{config.SERVER_URL}/me/packages/{product_id}/{filename}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=max(config.HTTP_TIMEOUT, 60),
+            stream=True,
+        )
+    except requests.RequestException as e:
+        raise NetworkError(str(e))
+    if r.status_code != 200:
+        raise ApiError(_detail(r, f"Không tải được {filename}"))
+    with open(dest_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
+
 def issue_token(access_token: str, product_id: str, hardware_hash: str,
                 device_name: str = "") -> dict:
     """Xin entitlement token đã ký + payload key từ server (sau khi server check quyền).

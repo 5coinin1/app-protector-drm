@@ -1,0 +1,14 @@
+{
+	"manifest":	{
+		"product_id":	"demo_app",
+		"version":	"1.0.0",
+		"entry":	"DemoApp.exe",
+		"payload_file":	"payload.enc",
+		"payload_hash":	"79172a70fcfdeb389ce95e3a42404ef2d3f9af272c635d799111425bdda50940",
+		"cipher":	"AES-256-GCM",
+		"nonce":	"8dCdG88Vz2xH+Ojn",
+		"created_at":	"2026-06-11T08:34:34Z"
+	},
+	"signature":	"95DDxnRYhLhT5p7ZtEeBOzA+RsU1/5zzd6VsGD+ebP9qTomAzMErF+J3T9V16Ly7Nt/Y0+hj1ea/kuniwJZcDg==",
+	"alg":	"Ed25519"
+}

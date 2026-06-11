@@ -184,8 +184,8 @@ class App(ctk.CTk):
             btn = ctk.CTkButton(card, text="▶  Play", width=90,
                                 command=lambda p=pid: self.do_play(p))
         else:
-            btn = ctk.CTkButton(card, text="Chưa cài", width=90, state="disabled",
-                                fg_color="gray30")
+            btn = ctk.CTkButton(card, text="⬇  Cài đặt", width=90, fg_color="#2f9e44",
+                                hover_color="#268a3a", command=lambda p=pid: self.do_install(p))
         btn.pack(side="right", padx=12, pady=10)
 
     # ---------- Play ----------
@@ -214,6 +214,31 @@ class App(ctk.CTk):
         box.insert("1.0", out or "(không có output)")
         box.configure(state="disabled")
         win.after(100, win.lift)
+
+    # ---------- Install ----------
+    def do_install(self, product_id):
+        self.play_status.configure(text=f"Đang cài {product_id}... (tải từ server)", text_color="gray")
+
+        def work():
+            try:
+                launcher_bridge.install(product_id, self.tokens["access_token"])
+            except api.NetworkError:
+                self.after(0, lambda: self.play_status.configure(
+                    text="❌ Mất kết nối khi tải app", text_color="#ff6b6b"))
+            except api.ApiError as e:
+                self.after(0, lambda: self.play_status.configure(
+                    text=f"❌ Cài thất bại: {e}", text_color="#ff6b6b"))
+            except Exception as e:
+                self.after(0, lambda: self.play_status.configure(
+                    text=f"❌ Lỗi cài: {e}", text_color="#ff6b6b"))
+            else:
+                self.after(0, lambda: self._install_done(product_id))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_done(self, product_id):
+        self.play_status.configure(text=f"✅ Đã cài {product_id} — bấm Play", text_color="#51cf66")
+        self.refresh_library()
 
     # ---------- Logout ----------
     def do_logout(self):

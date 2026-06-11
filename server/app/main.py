@@ -11,7 +11,7 @@ from sqlalchemy import select
 from .config import settings
 from .database import SessionLocal, init_db
 from .models import User
-from .routes import admin, auth, dashboard, library, runtime
+from .routes import admin, auth, dashboard, library, packages, runtime
 from .security import hash_password
 
 
@@ -41,6 +41,7 @@ app = FastAPI(title="License / Entitlement Server", version="0.1.0", lifespan=li
 
 app.include_router(auth.router)
 app.include_router(library.router)
+app.include_router(packages.router)
 app.include_router(runtime.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
