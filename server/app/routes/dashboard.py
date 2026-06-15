@@ -3,10 +3,11 @@
 Xác thực bằng cookie (access token JWT) cho phù hợp trình duyệt — khác với API /admin/* dùng Bearer.
 Chỉ user role=admin mới vào được.
 """
+import shutil
 from pathlib import Path
 
 import jwt
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -16,6 +17,9 @@ from ..database import get_db
 from ..models import AuditLog, Device, Entitlement, Product, ProductKey, User
 from ..security import create_access_token, decode_token, hash_password, verify_password
 from ..services.audit import log_event
+from ..services import ratelimit
+from ..services.packer import PackError, protect_app
+from ..services.storage import is_valid_product_id, package_storage_dir
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -50,14 +54,27 @@ def login_page(request: Request):
 @router.post("/login")
 def login_submit(request: Request, email: str = Form(...), password: str = Form(...),
                  db: Session = Depends(get_db)):
+    ip = request.client.host if request.client else "unknown"
+    rl_key = f"login:{ip}"
+    locked = ratelimit.seconds_locked(rl_key)
+    if locked > 0:
+        log_event(db, event_type="login", result="fail", ip_address=ip,
+                  message="dashboard rate limited")
+        return templates.TemplateResponse(
+            request, "login.html",
+            {"error": f"Quá nhiều lần đăng nhập sai. Thử lại sau {int(locked) + 1}s."},
+            status_code=429)
+
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(password, user.password_hash) or user.role != "admin":
+        ratelimit.record_failure(rl_key)
         log_event(db, event_type="login", result="fail",
-                  user_id=user.id if user else None, message="dashboard login fail")
+                  user_id=user.id if user else None, ip_address=ip, message="dashboard login fail")
         return templates.TemplateResponse(
             request, "login.html", {"error": "Sai thông tin hoặc không phải admin"},
             status_code=401)
-    log_event(db, event_type="login", result="success", user_id=user.id, message="dashboard")
+    ratelimit.reset(rl_key)
+    log_event(db, event_type="login", result="success", user_id=user.id, ip_address=ip, message="dashboard")
     resp = RedirectResponse("/dashboard", status_code=303)
     resp.set_cookie(COOKIE, create_access_token(user.id), httponly=True, samesite="lax")
     return resp
@@ -95,9 +112,19 @@ def products_page(request: Request, db: Session = Depends(get_db), msg: str = ""
         return _redirect_login()
     products = list(db.scalars(select(Product).order_by(Product.id)))
     keyed = {k.product_id for k in db.scalars(select(ProductKey).where(ProductKey.status == "active"))}
+    # Số user đang sở hữu (entitlement active) mỗi product — để admin biết tác động khi xóa.
+    owners = dict(db.execute(
+        select(Entitlement.product_id, func.count())
+        .where(Entitlement.status == "active")
+        .group_by(Entitlement.product_id)
+    ).all())
+    # Product nào đã có package trên server (đủ file phát hành).
+    packaged = {p.product_id for p in products if package_storage_dir(p.product_id).is_dir()
+                and (package_storage_dir(p.product_id) / "payload.enc").is_file()}
     return templates.TemplateResponse(request, "products.html",
                                       {"request": request, "admin": admin, "products": products,
-                                       "keyed": keyed, "msg": msg, "error": error})
+                                       "keyed": keyed, "owners": owners, "packaged": packaged,
+                                       "msg": msg, "error": error})
 
 
 @router.post("/products")
@@ -125,6 +152,103 @@ def set_key(request: Request, product_id: str, payload_key_b64: str = Form(...),
         db.add(ProductKey(product_id=product_id, encrypted_payload_key=payload_key_b64.strip()))
     db.commit()
     return RedirectResponse("/dashboard/products?msg=Đã đăng ký payload key", status_code=303)
+
+
+@router.post("/products/protect")
+async def protect_and_publish(request: Request, product_id: str = Form(...),
+                              name: str = Form(...), version: str = Form("1.0.0"),
+                              entry: str = Form(""), app_file: UploadFile = File(...),
+                              db: Session = Depends(get_db)):
+    """Upload file app -> server gọi Protector (mã hóa + ký) -> tạo product + lưu key + package.
+
+    Một thao tác trên web thay cho: chạy `protector pack` rồi `tools/publish.py` thủ công.
+    """
+    admin = current_admin(request, db)
+    if not admin:
+        return _redirect_login()
+
+    if not is_valid_product_id(product_id):
+        return RedirectResponse("/dashboard/products?error=product_id không hợp lệ", status_code=303)
+
+    data = await app_file.read()
+    if not data:
+        return RedirectResponse("/dashboard/products?error=File rỗng", status_code=303)
+
+    try:
+        payload_key_b64 = protect_app(app_file.filename or "app.bin", data,
+                                      product_id, version, entry.strip() or None)
+    except PackError as e:
+        return RedirectResponse(f"/dashboard/products?error={e}", status_code=303)
+
+    # Tạo (hoặc cập nhật) product.
+    product = db.scalar(select(Product).where(Product.product_id == product_id))
+    if product is None:
+        product = Product(product_id=product_id, name=name, version=version)
+        db.add(product)
+    else:
+        product.name = name
+        product.version = version
+
+    # Đăng ký/đè payload key.
+    pk = db.scalar(select(ProductKey).where(ProductKey.product_id == product_id,
+                                            ProductKey.status == "active"))
+    if pk:
+        pk.encrypted_payload_key = payload_key_b64
+    else:
+        db.add(ProductKey(product_id=product_id, encrypted_payload_key=payload_key_b64))
+    db.commit()
+
+    log_event(db, event_type="publish", result="success", product_id=product_id,
+              user_id=admin.id, message=f"admin {admin.email} đóng gói & xuất bản {product_id}")
+    return RedirectResponse(
+        f"/dashboard/products?msg=Đã đóng gói & xuất bản {product_id} (mã hóa + ký + lưu key)",
+        status_code=303)
+
+
+@router.post("/products/{product_id}/delete")
+def delete_product(request: Request, product_id: str, db: Session = Depends(get_db)):
+    """Xóa hẳn product + dữ liệu liên quan: entitlement, payload key, file package.
+
+    Hệ quả: user mất quyền dùng app và app biến mất khỏi thư viện (library join theo
+    products.product_id). Audit log được giữ lại để truy vết.
+    """
+    admin = current_admin(request, db)
+    if not admin:
+        return _redirect_login()
+
+    product = db.scalar(select(Product).where(Product.product_id == product_id))
+    if product is None:
+        return RedirectResponse("/dashboard/products?error=Product không tồn tại", status_code=303)
+
+    # 1. Thu hồi quyền của mọi user (xóa entitlement).
+    ents = list(db.scalars(select(Entitlement).where(Entitlement.product_id == product_id)))
+    for ent in ents:
+        db.delete(ent)
+    # 2. Xóa payload key.
+    for k in db.scalars(select(ProductKey).where(ProductKey.product_id == product_id)):
+        db.delete(k)
+    # 3. Xóa bản ghi product.
+    db.delete(product)
+    db.commit()
+
+    # 4. Xóa file package trên đĩa (payload.enc, manifest, public key).
+    pkg_dir = package_storage_dir(product_id)
+    had_package = pkg_dir.is_dir()
+    if had_package:
+        shutil.rmtree(pkg_dir, ignore_errors=True)
+    # Nếu còn sót (file đang bị mở/khóa) -> cảnh báo thay vì âm thầm bỏ qua.
+    file_note = ""
+    if had_package and pkg_dir.exists():
+        file_note = " ⚠ vài file package chưa xóa được (có thể đang bị mở), thử lại sau"
+
+    log_event(db, event_type="product_delete", result="success", product_id=product_id,
+              user_id=admin.id,
+              message=f"admin {admin.email} xóa product {product_id} "
+                      f"(gỡ {len(ents)} quyền, xóa file package: {'có' if had_package else 'không có'})")
+    return RedirectResponse(
+        f"/dashboard/products?msg=Đã xóa {product_id} — {len(ents)} user mất quyền, "
+        f"đã xóa file package trên server{file_note}",
+        status_code=303)
 
 
 # ---------- Users ----------

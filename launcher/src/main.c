@@ -20,6 +20,7 @@
 #include "pk_fingerprint.h"
 #include "pk_manifest.h"
 #include "pk_runner.h"
+#include "pk_server_key.h"
 #include "pk_util.h"
 
 static const char *arg(int argc, char **argv, const char *name) {
@@ -120,10 +121,16 @@ int main(int argc, char **argv) {
     const char *ent_file = arg(argc, argv, "--entitlement");
     const char *srv_pub_b64 = arg(argc, argv, "--server-pubkey");
     if (ent_file) {
-        if (!srv_pub_b64) { fprintf(stderr, "loi: thieu --server-pubkey\n"); free(enc); return 1; }
+        /* GHIM (pin) public key server: chỉ tin key nhúng sẵn lúc build, KHÔNG tin key client
+         * truyền vào. Nhờ vậy token giả do client tự ký bằng key khác sẽ verify thất bại. */
         unsigned char srv_pub[PK_SIG_PK];
-        if (pk_b64_decode(srv_pub_b64, srv_pub, sizeof(srv_pub)) != PK_SIG_PK) {
-            fprintf(stderr, "loi: server-pubkey sai\n"); free(enc); return 1;
+        if (pk_b64_decode(PK_SERVER_PUBKEY_B64, srv_pub, sizeof(srv_pub)) != PK_SIG_PK) {
+            fprintf(stderr, "loi: server pubkey nhung san khong hop le\n"); free(enc); return 1;
+        }
+        /* Nếu client có truyền --server-pubkey mà KHÁC key ghim -> nghi giả mạo, từ chối. */
+        if (srv_pub_b64 && strcmp(srv_pub_b64, PK_SERVER_PUBKEY_B64) != 0) {
+            fprintf(stderr, "           SERVER PUBKEY KHONG KHOP key ghim -> tu choi (nghi gia mao)\n");
+            free(enc); return 7;
         }
         pk_entitlement ent;
         printf("[launcher] verify entitlement token (server)...\n");
@@ -149,8 +156,15 @@ int main(int argc, char **argv) {
             free(enc); return 7;
         }
         printf("           OK  entitlement hop le (offline_until=%s)\n", ent.offline_until);
+    } else if (has_flag(argc, argv, "--dev")) {
+        /* Chế độ dev rõ ràng: chỉ dùng để test không cần server. */
+        printf("[launcher] (--dev: BO QUA entitlement + hardware binding — chi dung de test)\n");
     } else {
-        printf("[launcher] (che do offline-local GĐ3: bo qua check server)\n");
+        /* SẢN XUẤT: bắt buộc có entitlement token hợp lệ -> hardware binding luôn được áp.
+         * Nếu không, payload key đứng một mình (vd trích từ .session.json copy sang máy khác)
+         * vẫn KHÔNG chạy được app. */
+        fprintf(stderr, "           THIEU --entitlement: can entitlement token hop le moi chay duoc.\n");
+        free(enc); return 7;
     }
 
     /* 4. Payload key (tam: local) */

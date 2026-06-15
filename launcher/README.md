@@ -11,9 +11,16 @@ File chạy thay app gốc trong protected package. Verify chữ ký + hash → 
 
 ## Chế độ chạy
 - `launcher.exe --print-hwid` — in hardware id của máy (client gửi server đăng ký thiết bị).
-- `launcher.exe --package <dir> --entitlement <file> --server-pubkey <b64> --key-b64 <key>` — chạy GĐ5
+- `launcher.exe --package <dir> --entitlement <file> --key-b64 <key>` — chạy GĐ5
   (verify token + hardware binding + offline_until, key từ server).
-- `launcher.exe --package <dir> --key-file <path>` — chế độ offline-local GĐ3 (bỏ qua check server).
+- `launcher.exe --package <dir> --key-file <path> --dev` — chế độ offline-local để **test** (bỏ qua
+  entitlement + hardware binding). **Bắt buộc cờ `--dev`**; thiếu nó mà không có `--entitlement` thì
+  launcher từ chối chạy (exit 7) — để payload key đứng một mình không chạy được app ở máy khác.
+
+**Public key server được GHIM (pin) trong launcher** (`include/pk_server_key.h`) — launcher chỉ tin
+key nhúng sẵn lúc build, KHÔNG tin key do client truyền. `--server-pubkey` nay là tùy chọn; nếu có
+truyền mà khác key ghim → launcher từ chối (exit 7, nghi giả mạo). Đổi seed server thì phải cập nhật
+header này và build lại.
 
 ## Kiến trúc code
 Launcher **dùng chung** các module C với protector (một nguồn duy nhất), biên dịch trực tiếp từ

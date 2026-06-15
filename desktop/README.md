@@ -22,9 +22,13 @@ mkdir desktop/apps/demo_app
 copy protector/dist/DemoAppProtected/* desktop/apps/demo_app/
 copy launcher/build/launcher.exe desktop/apps/demo_app/
 ```
-- App **đã sở hữu + đã cài** → nút **Play**.
-- Đã sở hữu nhưng chưa cài → nút **Chưa cài** (disabled).
+- App **đã sở hữu + đã cài** → nút **Play** + nút **🗑** (gỡ khỏi máy, vẫn giữ quyền).
+- Đã sở hữu nhưng chưa cài → nút **Cài đặt** (tải từ server).
 - Không sở hữu → không xuất hiện trong thư viện.
+
+**Gỡ cài đặt (phía user):** nút 🗑 trên card xóa thư mục `apps/<id>/` khỏi máy nhưng KHÔNG đụng
+entitlement trên server → app vẫn còn trong thư viện, chuyển về nút **Cài đặt** để tải lại.
+(Khác với admin **xóa product** ở dashboard — cái đó gỡ quyền của mọi user.)
 
 ## Cấu trúc
 | File | Vai trò |
@@ -38,6 +42,8 @@ copy launcher/build/launcher.exe desktop/apps/demo_app/
 ## Tính năng
 - Đăng nhập, lưu session (tự đăng nhập lại lần sau).
 - Hiển thị thư viện app sở hữu (đồng bộ từ server).
+- **Tự đồng bộ định kỳ** (poll mỗi 8s) + nút **🔄 Làm mới**: admin grant/revoke/xóa product →
+  app tự xuất hiện/biến mất trong vài giây (chỉ vẽ lại khi dữ liệu đổi, tránh nhấp nháy).
 - **Offline mode cơ bản**: mất mạng → dùng cache library đã lưu, hiện cảnh báo OFFLINE.
 - Bấm Play → chạy launcher, hiện output + exit code (popup).
 - Truyền `--token`/`--server` cho launcher (GĐ5 sẽ dùng để check entitlement ở server).
@@ -51,5 +57,8 @@ copy launcher/build/launcher.exe desktop/apps/demo_app/
    token + hardware binding + `offline_until`, rồi giải mã & chạy.
 - Mất mạng → dùng bundle đã cache (chạy được tới hạn `offline_until`).
 
-## Bảo mật / để lại sau
-- `.session.json` lưu token + payload key (cache offline) dạng thường — **GĐ7** sẽ bảo vệ bằng DPAPI.
+## Bảo mật
+- `.session.json` (token + payload key cache offline) được **mã hóa bằng Windows DPAPI** (`dpapi.py`):
+  bí mật trói vào tài khoản Windows trên máy này → copy file sang máy/khác user khác là vô dụng.
+- Launcher **ghim public key server** + **bắt buộc entitlement token** (hardware binding luôn áp) →
+  payload key trích từ file cũng không chạy được app ở máy khác.

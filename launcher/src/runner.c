@@ -41,10 +41,25 @@ int pk_run_and_wait(const char *exe_path, const char *workdir, int *exit_code) {
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
+    /* Chạy app qua cmd trong console RIÊNG (CREATE_NEW_CONSOLE) vì:
+     *  - App tương tác (vd crack-me chờ nhập serial) cần console thật để đọc bàn phím;
+     *    không có thì app kẹt khi đọc stdin -> launcher đợi vô hạn -> client treo.
+     *  - `& pause` giữ cửa sổ lại sau khi app thoát để xem được output của app thoát nhanh
+     *    (vd DemoApp in banner rồi return ngay -> nếu không pause, console đóng tức thì).
+     *  - `set _ec=!errorlevel!` ... `exit /b !_ec!` (cần /v:on) để BẢO TOÀN exit code của app
+     *    thay vì lấy exit code của pause.
+     * lpCommandLine phải ghi được nên dùng buffer cục bộ. */
+    char cmdline[4096];
+    snprintf(cmdline, sizeof(cmdline),
+             "cmd.exe /v:on /c \"\"%s\" & set _ec=!errorlevel! & echo. & "
+             "echo [ App da ket thuc - nhan phim bat ky de dong cua so ] & "
+             "pause >nul & exit /b !_ec!\"",
+             exe_path);
+
     BOOL ok = CreateProcessA(
-        exe_path,   /* lpApplicationName */
-        NULL,       /* lpCommandLine */
-        NULL, NULL, FALSE, 0, NULL,
+        NULL,       /* lpApplicationName (cmd nằm trong PATH) */
+        cmdline,    /* lpCommandLine */
+        NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL,
         workdir,    /* thư mục làm việc = thư mục tạm */
         &si, &pi);
     if (!ok) {

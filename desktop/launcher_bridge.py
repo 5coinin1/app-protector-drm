@@ -6,6 +6,7 @@ DÙNG CHUNG (desktop/launcher.exe) chạy mọi app qua --package, không nhân 
 import json
 import os
 import platform
+import shutil
 import subprocess
 
 import api
@@ -46,6 +47,14 @@ def install(product_id: str, access_token: str) -> None:
         tmp = os.path.join(d, name + ".part")
         api.download_package_file(access_token, product_id, name, tmp)
         os.replace(tmp, os.path.join(d, name))
+
+
+def uninstall(product_id: str) -> None:
+    """Gỡ app khỏi máy: xóa thư mục apps/<id>/. KHÔNG đụng tới entitlement trên server,
+    nên user vẫn giữ quyền và có thể Cài đặt lại (tải về) sau."""
+    d = package_dir(product_id)
+    if os.path.isdir(d):
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def get_hwid() -> str:

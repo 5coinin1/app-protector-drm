@@ -18,6 +18,9 @@ server/data/*.db
 server/data/*.seed
 *.sqlite
 *.sqlite3
+# Package đã publish (chứa payload.enc) + keypair ký do Dashboard sinh khi đóng gói
+server/data/packages/
+server/data/protector_keys/
 
 # Secrets / keys — KHÔNG commit khóa private
 *.pem

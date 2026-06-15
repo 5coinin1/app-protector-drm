@@ -4,7 +4,26 @@
 <h2>Sản phẩm</h2>
 
 <article>
-  <header>Tạo product mới</header>
+  <header>📦 Đóng gói &amp; xuất bản app (1 bước)</header>
+  <p class="muted">Chọn file app (<code>.exe</code>) hoặc <code>.zip</code> thư mục app (hỗ trợ
+    entry là <code>.exe</code>/<code>.bat</code>/<code>.cmd</code>). Server sẽ tự mã hóa + ký + sinh key
+    + tạo product + lưu package — không cần chạy protector/publish thủ công.</p>
+  <form method="post" action="/dashboard/products/protect" enctype="multipart/form-data">
+    <div class="grid">
+      <input name="product_id" placeholder="product_id (vd demo_app)" required pattern="[a-zA-Z0-9_\-]+">
+      <input name="name" placeholder="Tên hiển thị" required>
+      <input name="version" placeholder="1.0.0" value="1.0.0">
+    </div>
+    <div class="grid">
+      <input type="file" name="app_file" required>
+      <input name="entry" placeholder="entry (tùy chọn — để trống sẽ tự dò .exe; vd bin/App.exe)">
+    </div>
+    <button type="submit">Đóng gói &amp; xuất bản</button>
+  </form>
+</article>
+
+<article>
+  <header>Tạo product mới (chỉ metadata)</header>
   <form method="post" action="/dashboard/products">
     <div class="grid">
       <input name="product_id" placeholder="product_id (vd demo_app)" required pattern="[a-zA-Z0-9_\-]+">
@@ -16,7 +35,10 @@
 </article>
 
 <table>
-  <thead><tr><th>product_id</th><th>Tên</th><th>Version</th><th>Payload key</th><th>Đăng ký key</th></tr></thead>
+  <thead><tr>
+    <th>product_id</th><th>Tên</th><th>Version</th><th>Package</th>
+    <th>Payload key</th><th>Người sở hữu</th><th>Đăng ký key</th><th></th>
+  </tr></thead>
   <tbody>
   {% for p in products %}
     <tr>
@@ -24,9 +46,14 @@
       <td>{{ p.name }}</td>
       <td>{{ p.version }}</td>
       <td>
+        {% if p.product_id in packaged %}<span class="pill ok">đã có</span>
+        {% else %}<span class="pill bad">chưa có</span>{% endif %}
+      </td>
+      <td>
         {% if p.product_id in keyed %}<span class="pill ok">đã có</span>
         {% else %}<span class="pill bad">chưa có</span>{% endif %}
       </td>
+      <td>{{ owners.get(p.product_id, 0) }} user</td>
       <td>
         <form method="post" action="/dashboard/products/{{ p.product_id }}/key" style="margin:0">
           <fieldset role="group">
@@ -35,11 +62,18 @@
           </fieldset>
         </form>
       </td>
+      <td>
+        <form method="post" action="/dashboard/products/{{ p.product_id }}/delete" style="margin:0"
+              onsubmit="return confirm('Xóa hẳn product {{ p.product_id }}?\n{{ owners.get(p.product_id, 0) }} user sẽ MẤT quyền dùng app và app biến mất khỏi thư viện. Không thể hoàn tác.');">
+          <button type="submit" class="secondary" style="--pico-background-color:#c92a2a;--pico-border-color:#c92a2a">🗑 Xóa</button>
+        </form>
+      </td>
     </tr>
   {% else %}
-    <tr><td colspan="5" class="muted">Chưa có product</td></tr>
+    <tr><td colspan="8" class="muted">Chưa có product</td></tr>
   {% endfor %}
   </tbody>
 </table>
-<small class="muted">Payload key lấy từ file <code>SECRET_payload_key.b64</code> mà Protector sinh khi pack app.</small>
+<small class="muted">Payload key lấy từ file <code>SECRET_payload_key.b64</code> mà Protector sinh khi pack app.
+  Xóa product sẽ gỡ entitlement + key + file package; user mất quyền và không còn thấy app.</small>
 {% endblock %}

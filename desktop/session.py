@@ -1,13 +1,20 @@
-"""Lưu/đọc session: token + thông tin user + cache thư viện + cache entitlement (offline)."""
+"""Lưu/đọc session: token + thông tin user + cache thư viện + cache entitlement (offline).
+
+File được mã hóa bằng Windows DPAPI (xem dpapi.py): bí mật (session token, payload key) bị
+trói vào tài khoản Windows trên máy này -> copy .session.json sang máy khác là vô dụng.
+"""
 import json
 import os
 
 import config
+import dpapi
 
 
 def _write(data: dict) -> None:
-    with open(config.SESSION_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    blob = dpapi.protect(raw)            # mã hóa trước khi ghi
+    with open(config.SESSION_FILE, "wb") as f:
+        f.write(blob)
 
 
 def save(user: dict, tokens: dict, library: list[dict] | None = None) -> None:
@@ -27,9 +34,16 @@ def load() -> dict | None:
     if not os.path.exists(config.SESSION_FILE):
         return None
     try:
-        with open(config.SESSION_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError):
+        with open(config.SESSION_FILE, "rb") as f:
+            blob = f.read()
+        try:
+            raw = dpapi.unprotect(blob)          # file mã hóa của máy/user này
+        except OSError:
+            # Không giải mã được: file plaintext cũ (migrate) HOẶC copy từ máy khác (vô dụng).
+            raw = blob
+        return json.loads(raw.decode("utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        # Copy từ máy khác -> blob lạ -> coi như chưa đăng nhập (phải login lại).
         return None
 
 

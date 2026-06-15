@@ -15,6 +15,7 @@ from ..security import (
     hash_password,
     verify_password,
 )
+from ..services import ratelimit
 from ..services.audit import log_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -48,18 +49,29 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=AuthResult)
 def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
+    ip = _client_ip(request) or "unknown"
+    rl_key = f"login:{ip}"
+    locked = ratelimit.seconds_locked(rl_key)
+    if locked > 0:
+        log_event(db, event_type="login", result="fail", ip_address=ip,
+                  message=f"rate limited ({body.email})")
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail=f"Quá nhiều lần đăng nhập sai. Thử lại sau {int(locked) + 1}s.")
+
     user = db.scalar(select(User).where(User.email == body.email))
     if user is None or not verify_password(body.password, user.password_hash):
+        ratelimit.record_failure(rl_key)
         log_event(
             db,
             event_type="login",
             result="fail",
             user_id=user.id if user else None,
-            ip_address=_client_ip(request),
+            ip_address=ip,
             message=f"login fail cho {body.email}",
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email hoặc mật khẩu sai")
 
+    ratelimit.reset(rl_key)  # creds đúng -> xóa bộ đếm fail
     if user.status != "active":
         log_event(db, event_type="login", result="fail", user_id=user.id, ip_address=_client_ip(request),
                   message="tài khoản bị khóa")
