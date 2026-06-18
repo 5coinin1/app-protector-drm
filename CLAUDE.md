@@ -91,7 +91,9 @@ license_app/
 cd server
 python -m venv .venv ; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload        # http://127.0.0.1:8000 ; admin: /admin
+python ..\tools\gen_cert.py           # sinh cert TLS tự ký (1 lần) -> certs/server.crt + server.key
+python run.py                         # HTTPS https://127.0.0.1:8000 ; admin: /dashboard
+# (dev nhanh không cần TLS: uvicorn app.main:app --reload — nhưng client mặc định gọi HTTPS)
 ```
 
 **Desktop client (Python):**
@@ -131,7 +133,10 @@ cmake --build build
 7. **GĐ7 (tùy chọn, đã làm nhiều)**: ✅ secure local storage (`.session.json` mã hóa **DPAPI**),
    ✅ **pin public key server** trong launcher, ✅ **bắt buộc entitlement token** (gate offline-local sau cờ `--dev`)
    → vá rủi ro copy `.session.json`/app sang máy khác; ✅ **rate-limit đăng nhập** (IP, chống brute-force);
-   ✅ **JWT secret không hardcode** (qua `.env` hoặc tự sinh `data/jwt_secret.key`). *Còn lại (tùy chọn):* watermark, integrity/anti-tamper nâng cao.
+   ✅ **JWT secret không hardcode** (qua `.env` hoặc tự sinh `data/jwt_secret.key`);
+   ✅ **HTTPS/TLS + cert pinning** (server `run.py` chạy TLS; desktop client + `tools/publish.py` pin
+   `certs/server.crt`) → payload key & JWT không còn truyền dạng rõ, chống MITM. *Còn lại (tùy chọn):*
+   2FA/email-alert thiết bị mới, mã hóa payload key-at-rest trong DB, watermark, integrity/anti-tamper nâng cao.
 
 Đến hết GĐ6 là bài đã rất ổn (có sản phẩm thật + nhiều kiến thức bảo mật).
 

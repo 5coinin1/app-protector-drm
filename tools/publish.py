@@ -33,9 +33,13 @@ def main() -> int:
     ap.add_argument("--product-id", required=True)
     ap.add_argument("--name", required=True)
     ap.add_argument("--version", default="1.0.0")
-    ap.add_argument("--server", default=os.environ.get("DRM_SERVER", "http://127.0.0.1:8000"))
+    ap.add_argument("--server", default=os.environ.get("DRM_SERVER", "https://127.0.0.1:8000"))
     ap.add_argument("--admin-email", default=os.environ.get("DRM_ADMIN_EMAIL", "admin@example.com"))
     ap.add_argument("--admin-password", default=os.environ.get("DRM_ADMIN_PASSWORD", "admin12345"))
+    # Cert pinning: chỉ tin cert tự ký của server (certs/server.crt). Để trống nếu server dùng CA thật.
+    default_cert = Path(__file__).resolve().parent.parent / "certs" / "server.crt"
+    ap.add_argument("--cert", default=os.environ.get("DRM_SERVER_CERT", str(default_cert)),
+                    help="đường dẫn cert server để pin (verify TLS)")
     args = ap.parse_args()
 
     dist = Path(args.dist)
@@ -46,6 +50,9 @@ def main() -> int:
     payload_key = (dist / "SECRET_payload_key.b64").read_text(encoding="utf-8").strip()
 
     s = requests.Session()
+    # Pin cert server nếu file tồn tại (HTTPS); ngược lại để mặc định (CA hệ thống / HTTP).
+    if args.cert and os.path.isfile(args.cert):
+        s.verify = args.cert
 
     # 1. login admin
     r = s.post(f"{args.server}/auth/login",

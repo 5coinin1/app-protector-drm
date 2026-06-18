@@ -1,6 +1,10 @@
-"""GĐ7: rate-limit đăng nhập + JWT secret không hardcode."""
+"""GĐ7: rate-limit đăng nhập + JWT secret không hardcode + validate payload key."""
+import base64
+import os
+
 from app.config import settings, _DEFAULT_JWT_SECRET
 from app.services import ratelimit
+from tests.conftest import auth_header
 
 
 def test_login_rate_limited_after_max_attempts(client):
@@ -40,3 +44,21 @@ def test_jwt_secret_not_default():
     # get_settings() đã thay placeholder bằng secret thật (random bền hoặc từ .env).
     assert settings.jwt_secret != _DEFAULT_JWT_SECRET
     assert len(settings.jwt_secret) >= 16
+
+
+def test_set_payload_key_rejects_invalid(client, admin_token):
+    h = auth_header(admin_token)
+    client.post("/admin/products", json={"product_id": "keychk", "name": "K", "version": "1.0.0"}, headers=h)
+
+    # Key rác / sai độ dài -> 400
+    bad = client.post("/admin/products/keychk/key",
+                      json={"payload_key_b64": "khong-phai-key"}, headers=h)
+    assert bad.status_code == 400
+    short = client.post("/admin/products/keychk/key",
+                        json={"payload_key_b64": base64.b64encode(os.urandom(16)).decode()}, headers=h)
+    assert short.status_code == 400
+
+    # Key base64 của đúng 32 byte -> 200
+    good = client.post("/admin/products/keychk/key",
+                       json={"payload_key_b64": base64.b64encode(os.urandom(32)).decode()}, headers=h)
+    assert good.status_code == 200

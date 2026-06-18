@@ -17,7 +17,12 @@ from ..schemas import (
 )
 from ..security import hash_password
 from ..services.audit import log_event
-from ..services.storage import ALLOWED_FILES, is_valid_product_id, package_storage_dir
+from ..services.storage import (
+    ALLOWED_FILES,
+    is_valid_payload_key_b64,
+    is_valid_product_id,
+    package_storage_dir,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -51,6 +56,9 @@ def set_product_key(product_id: str, body: SetKeyIn, db: Session = Depends(get_d
     """
     if db.scalar(select(Product).where(Product.product_id == product_id)) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product không tồn tại")
+    if not is_valid_payload_key_b64(body.payload_key_b64):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="payload_key_b64 không hợp lệ (phải là base64 của đúng 32 byte)")
 
     existing = db.scalar(
         select(ProductKey).where(ProductKey.product_id == product_id, ProductKey.status == "active")

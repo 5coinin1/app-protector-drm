@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     device_limit: int = 3          # số thiết bị active tối đa mỗi user
     offline_grace_days: int = 7    # thời hạn chạy offline của entitlement token
 
+    # TLS (GĐ7): chạy server qua HTTPS để bí mật (nhất là payload key) không đi qua dây dạng rõ.
+    # Cert tự ký sinh bằng `python tools/gen_cert.py`; chạy server qua `python run.py` (xem server/run.py).
+    tls_certfile: str = str(BASE_DIR.parent / "certs" / "server.crt")
+    tls_keyfile: str = str(BASE_DIR.parent / "certs" / "server.key")
+
     # Đóng gói trên Dashboard (gọi Protector CLI ngay từ web).
     # protector.exe nằm ở <repo>/protector/build/protector.exe theo mặc định.
     protector_exe: str = str(BASE_DIR.parent / "protector" / "build" / "protector.exe")

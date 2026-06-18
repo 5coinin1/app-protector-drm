@@ -19,7 +19,7 @@ from ..security import create_access_token, decode_token, hash_password, verify_
 from ..services.audit import log_event
 from ..services import ratelimit
 from ..services.packer import PackError, protect_app
-from ..services.storage import is_valid_product_id, package_storage_dir
+from ..services.storage import is_valid_payload_key_b64, is_valid_product_id, package_storage_dir
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -144,12 +144,18 @@ def set_key(request: Request, product_id: str, payload_key_b64: str = Form(...),
             db: Session = Depends(get_db)):
     if not current_admin(request, db):
         return _redirect_login()
+    key = payload_key_b64.strip()
+    if not is_valid_payload_key_b64(key):
+        return RedirectResponse(
+            "/dashboard/products?error=Payload key không hợp lệ — phải là base64 của đúng 32 byte "
+            "(nội dung file SECRET_payload_key.b64). App auto-pack thì KHÔNG cần dán key.",
+            status_code=303)
     existing = db.scalar(select(ProductKey).where(ProductKey.product_id == product_id,
                                                   ProductKey.status == "active"))
     if existing:
-        existing.encrypted_payload_key = payload_key_b64.strip()
+        existing.encrypted_payload_key = key
     else:
-        db.add(ProductKey(product_id=product_id, encrypted_payload_key=payload_key_b64.strip()))
+        db.add(ProductKey(product_id=product_id, encrypted_payload_key=key))
     db.commit()
     return RedirectResponse("/dashboard/products?msg=Đã đăng ký payload key", status_code=303)
 

@@ -19,6 +19,12 @@
  *                           patch jump so với check "ồn ào".
  *   5. Control-flow flattening: hàm try_premium bị băm phẳng thành dispatcher while/switch
  *                           (thủ công, tương đương Tigress --Transform=Flatten) -> CFG rối.
+ *   6. Phát hiện tool RE     : quét tiến trình đang chạy (x64dbg/IDA/Ghidra/procmon...) -> nếu thấy
+ *                           thì ĐẦU ĐỘC khóa (silent) + cảnh báo "ồn ào" để demo.
+ *   7. Self-checksum (.text) : tự băm vùng code của try_premium lúc chạy; nếu bị PATCH (vá byte/
+ *                           sửa jump) thì checksum lệch -> đầu độc khóa -> FLAG ra rác.
+ *   8. Quét software breakpoint: dò byte 0xCC (INT3 do debugger đặt) trong code try_premium ->
+ *                           đặt breakpoint vào hàm là khóa hỏng (silent).
  *
  * LƯU Ý QUAN TRỌNG: cipher/KDF trong file này (FNV-1a + xorshift) là cơ chế DẠY HỌC,
  * CỐ TÌNH yếu để sinh viên reverse được. Nó ĐỘC LẬP và KHÔNG thay thế crypto thật của hệ
@@ -34,6 +40,10 @@
 
 #include <windows.h>
 #include <winternl.h>   /* PEB, BeingDebugged */
+#include <tlhelp32.h>   /* CreateToolhelp32Snapshot — liệt kê tiến trình (phát hiện tool RE) */
+
+/* Forward declaration: các check toàn vẹn (self-checksum / quét breakpoint) cần địa chỉ try_premium. */
+static void try_premium(const char *license);
 
 /* ------------------------------------------------------------------ *
  * Dữ liệu đã obfuscate (sinh tự động, xem comment cuối file).
@@ -121,15 +131,94 @@ static int chk_debug_port(void) {
     return 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * (6) Phát hiện công cụ RE đang chạy (x64dbg/IDA/procmon...).
+ *     Tên tiến trình lưu XOR 0x5A -> `strings DemoApp.exe` không lộ.
+ * ------------------------------------------------------------------ */
+#define N_RETOOLS 16
+#define RETOOL_W 24
+static const unsigned char s_retools[N_RETOOLS][RETOOL_W] = {
+    {0x22,0x6c,0x6e,0x3e,0x38,0x3d,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* x64dbg.exe */
+    {0x22,0x69,0x68,0x3e,0x38,0x3d,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* x32dbg.exe */
+    {0x22,0x63,0x6c,0x3e,0x38,0x3d,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* x96dbg.exe */
+    {0x35,0x36,0x36,0x23,0x3e,0x38,0x3d,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* ollydbg.exe */
+    {0x2d,0x33,0x34,0x3e,0x38,0x3d,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* windbg.exe */
+    {0x33,0x3e,0x3b,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* ida.exe */
+    {0x33,0x3e,0x3b,0x6c,0x6e,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* ida64.exe */
+    {0x3e,0x34,0x29,0x2a,0x23,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* dnspy.exe */
+    {0x2a,0x3f,0x29,0x2e,0x2f,0x3e,0x33,0x35,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* pestudio.exe */
+    {0x2a,0x28,0x35,0x39,0x37,0x35,0x34,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* procmon.exe */
+    {0x2a,0x28,0x35,0x39,0x37,0x35,0x34,0x6c,0x6e,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* procmon64.exe */
+    {0x2d,0x33,0x28,0x3f,0x29,0x32,0x3b,0x28,0x31,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* wireshark.exe */
+    {0x33,0x37,0x37,0x2f,0x34,0x33,0x2e,0x23,0x3e,0x3f,0x38,0x2f,0x3d,0x3d,0x3f,0x28,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a},  /* immunitydebugger.exe */
+    {0x32,0x2e,0x2e,0x2a,0x3e,0x3f,0x38,0x2f,0x3d,0x3d,0x3f,0x28,0x2f,0x33,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* httpdebuggerui.exe */
+    {0x3c,0x33,0x3e,0x3e,0x36,0x3f,0x28,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* fiddler.exe */
+    {0x28,0x3f,0x39,0x36,0x3b,0x29,0x29,0x74,0x34,0x3f,0x2e,0x74,0x3f,0x22,0x3f,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a,0x5a},  /* reclass.net.exe */
+};
+
+static int re_tool_running(void) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32 pe;
+    pe.dwSize = sizeof(pe);
+    int found = 0;
+    if (Process32First(snap, &pe)) {
+        do {
+            char name[RETOOL_W];
+            for (int i = 0; i < N_RETOOLS && !found; i++) {
+                deobf(s_retools[i], RETOOL_W, name);
+                if (_stricmp(pe.szExeFile, name) == 0) found = 1;
+            }
+        } while (!found && Process32Next(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+/* ------------------------------------------------------------------ *
+ * (7)(8) Toàn vẹn code try_premium: self-checksum + quét software breakpoint.
+ *     Đọc N byte đầu của hàm try_premium lúc chạy:
+ *       - (7) băm (FNV-1a) so với TP_CKSUM -> lệch nghĩa là bị PATCH.
+ *       - (8) đếm byte 0xCC (INT3) -> debugger đặt software breakpoint vào hàm.
+ *     Cả hai đầu độc khóa (silent) thay vì báo lỗi to.
+ * ------------------------------------------------------------------ */
+#define TP_SCAN_LEN 96
+/* Checksum chuẩn của 96 byte đầu try_premium (đo từ binary sạch — xem comment cuối file).
+ * Đổi try_premium thì PHẢI đo lại giá trị này (giống FLAG_CIPHER). Đo: DEMOAPP_SELFTEST=1. */
+#define TP_CKSUM 0x6f4efa2aaa752c75ULL
+
+static uint64_t text_checksum(const unsigned char *p, size_t n) {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 0x100000001b3ULL;
+    return h;
+}
+
+static int text_checksum_tampered(void) {
+    const unsigned char *p = (const unsigned char *)(uintptr_t)&try_premium;
+    return text_checksum(p, TP_SCAN_LEN) != (uint64_t)TP_CKSUM;
+}
+
+static int has_software_breakpoint(void) {
+    const volatile unsigned char *p = (const volatile unsigned char *)(uintptr_t)&try_premium;
+    for (size_t i = 0; i < TP_SCAN_LEN; i++)
+        if (p[i] == 0xCC) return 1;
+    return 0;
+}
+
 /* mask = 0 nếu flag==0, = 0xFFFF...FFFF nếu flag!=0 (tránh nhánh if rõ ràng) */
 static uint64_t mask_of(int flag) { return (uint64_t)(-(int64_t)(flag != 0)); }
 
-static uint64_t anti_debug_poison(void) {
+/* noinline: giữ TP_CKSUM (trong text_checksum_tampered) KHÔNG bị inline vào try_premium,
+ * nếu không thì đổi TP_CKSUM lại làm đổi bytes try_premium -> self-checksum tự mâu thuẫn. */
+__attribute__((noinline)) static uint64_t anti_debug_poison(void) {
     uint64_t m = 0;
     m |= mask_of((int)IsDebuggerPresent());
     m |= mask_of(chk_peb_being_debugged());
     m |= mask_of(chk_remote_debugger());
     m |= mask_of(chk_debug_port());
+    m |= mask_of(re_tool_running());          /* (6) tool RE đang chạy */
+    m |= mask_of(text_checksum_tampered());   /* (7) code try_premium bị patch */
+    m |= mask_of(has_software_breakpoint());  /* (8) có INT3 trong try_premium */
     return m & 0x9E3779B97F4A7C15ULL;  /* poison khác 0 nếu bất kỳ check nào dính */
 }
 
@@ -155,7 +244,8 @@ static void noisy_timing_notice(void) {
  *
  * Mẹo demo: build bản obfuscate này với -O0 hoặc -O1 để dispatcher hiện rõ trong Ghidra
  * (gcc -O2 có thể tối ưu/khôi phục một phần luồng). */
-static void try_premium(const char *license) {
+/* noinline+used: giữ try_premium là hàm độc lập để self-checksum/quét breakpoint đọc đúng code nó. */
+__attribute__((noinline, used)) static void try_premium(const char *license) {
     enum { ST_LIC = 0x5b, ST_DERIVE = 0x2e, ST_DECRYPT = 0x91,
            ST_VERIFY = 0x47, ST_OK = 0xc3, ST_DENY = 0x7f, ST_END = 0x00 };
     char buf[128];
@@ -218,7 +308,20 @@ int main(int argc, char **argv) {
     /* Check "ồn ào" (loud) — minh họa cho báo cáo, dễ phát hiện & vô hiệu. */
     if (IsDebuggerPresent())
         fprintf(stderr, "[!] phat hien debugger (loud check)\n");
+    if (re_tool_running())
+        fprintf(stderr, "[!] phat hien cong cu phan tich/RE dang chay (loud check)\n");
     noisy_timing_notice();
+
+    /* Selftest ẩn (chỉ khi đặt env DEMOAPP_SELFTEST): in checksum + số byte 0xCC của try_premium
+     * để LẤY giá trị nhúng vào TP_CKSUM. Không ảnh hưởng người dùng thường. */
+    if (getenv("DEMOAPP_SELFTEST")) {
+        const unsigned char *tp = (const unsigned char *)(uintptr_t)&try_premium;
+        int cc = 0;
+        for (size_t i = 0; i < TP_SCAN_LEN; i++)
+            if (tp[i] == 0xCC) cc++;
+        fprintf(stderr, "[selftest] TP_CKSUM=0x%016llxULL  cc=%d\n",
+                (unsigned long long)text_checksum(tp, TP_SCAN_LEN), cc);
+    }
 
     /* Bản FREE — giữ nguyên hành vi cũ để đường demo launcher không đổi. */
     printf("==============================\n");

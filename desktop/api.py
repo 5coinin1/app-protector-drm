@@ -1,7 +1,12 @@
-"""HTTP client gọi License Server."""
+"""HTTP client gọi License Server (HTTPS + pin cert qua config.SERVER_VERIFY)."""
 import requests
 
 import config
+
+# Session dùng chung: gắn sẵn cert pinning -> mọi request đều verify đúng cert server.
+# (config.SERVER_VERIFY = đường dẫn certs/server.crt, hoặc True nếu dùng CA hệ thống.)
+_session = requests.Session()
+_session.verify = config.SERVER_VERIFY
 
 
 class ApiError(Exception):
@@ -25,7 +30,7 @@ def _detail(resp: requests.Response, fallback: str) -> str:
 def login(email: str, password: str) -> dict:
     """Trả {user, tokens}. Raise ApiError nếu sai thông tin, NetworkError nếu mất mạng."""
     try:
-        r = requests.post(
+        r = _session.post(
             f"{config.SERVER_URL}/auth/login",
             json={"email": email, "password": password},
             timeout=config.HTTP_TIMEOUT,
@@ -40,7 +45,7 @@ def login(email: str, password: str) -> dict:
 def get_library(access_token: str) -> list[dict]:
     """Danh sách app đã sở hữu. Raise NetworkError nếu mất mạng, ApiError nếu token hỏng."""
     try:
-        r = requests.get(
+        r = _session.get(
             f"{config.SERVER_URL}/me/library",
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=config.HTTP_TIMEOUT,
@@ -57,7 +62,7 @@ def get_library(access_token: str) -> list[dict]:
 def get_package_info(access_token: str, product_id: str) -> dict:
     """Thông tin package để cài (danh sách file + size). Raise nếu chưa publish / không sở hữu."""
     try:
-        r = requests.get(
+        r = _session.get(
             f"{config.SERVER_URL}/me/packages/{product_id}",
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=config.HTTP_TIMEOUT,
@@ -74,7 +79,7 @@ def get_package_info(access_token: str, product_id: str) -> dict:
 def download_package_file(access_token: str, product_id: str, filename: str, dest_path: str) -> None:
     """Tải 1 file của package về dest_path (stream). Raise NetworkError/ApiError nếu lỗi."""
     try:
-        r = requests.get(
+        r = _session.get(
             f"{config.SERVER_URL}/me/packages/{product_id}/{filename}",
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=max(config.HTTP_TIMEOUT, 60),
@@ -99,7 +104,7 @@ def issue_token(access_token: str, product_id: str, hardware_hash: str,
     ApiError nếu server từ chối (không sở hữu / vượt thiết bị / bị thu hồi).
     """
     try:
-        r = requests.post(
+        r = _session.post(
             f"{config.SERVER_URL}/runtime/issue-token",
             headers={"Authorization": f"Bearer {access_token}"},
             json={"product_id": product_id, "hardware_hash": hardware_hash, "device_name": device_name},

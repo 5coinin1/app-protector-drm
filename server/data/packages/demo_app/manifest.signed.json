@@ -4,11 +4,11 @@
 		"version":	"1.0.0",
 		"entry":	"DemoApp.exe",
 		"payload_file":	"payload.enc",
-		"payload_hash":	"79172a70fcfdeb389ce95e3a42404ef2d3f9af272c635d799111425bdda50940",
+		"payload_hash":	"01b07b3bd6617dfb04e0790669ec8107f01ead89da85747343a77072b3ee6500",
 		"cipher":	"AES-256-GCM",
-		"nonce":	"8dCdG88Vz2xH+Ojn",
-		"created_at":	"2026-06-11T08:34:34Z"
+		"nonce":	"wXY281bQmeP5ecxA",
+		"created_at":	"2026-06-17T20:09:51Z"
 	},
-	"signature":	"95DDxnRYhLhT5p7ZtEeBOzA+RsU1/5zzd6VsGD+ebP9qTomAzMErF+J3T9V16Ly7Nt/Y0+hj1ea/kuniwJZcDg==",
+	"signature":	"ZzDpc1f1CovN2YU3x1cDLrQGqMf1L7ihGHYcIZg2q4ZlIEvHV2goCheV7UrB6EsMYCw2/nH1bdPwwYz006ewAA==",
 	"alg":	"Ed25519"
 }

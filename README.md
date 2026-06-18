@@ -19,11 +19,17 @@ bấm **Play** để chạy app qua launcher kiểm tra quyền ở server. Khô
 cd server
 python -m venv .venv ; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+python ..\tools\gen_cert.py     # sinh cert TLS tự ký (chạy 1 lần)
+python run.py                   # chạy server qua HTTPS
 ```
-- **Admin Dashboard (giao diện web):** http://127.0.0.1:8000/dashboard
+- **Admin Dashboard (giao diện web):** https://127.0.0.1:8000/dashboard
   (đăng nhập `admin@example.com` / `admin12345`). Mở `/` sẽ tự chuyển sang đây.
-- **API docs (Swagger):** http://127.0.0.1:8000/docs — thử trực tiếp mọi API.
+  *Trình duyệt sẽ cảnh báo cert tự ký — bấm "tiếp tục" là vào được (xem giải thích ở threat-model §3.10).*
+- **API docs (Swagger):** https://127.0.0.1:8000/docs — thử trực tiếp mọi API.
+
+> **Vì sao HTTPS:** client xin *payload key* (khóa giải mã app) qua server. Chạy HTTP trần thì key đi qua
+> mạng dạng rõ → mất hết tác dụng mã hóa. Server bật TLS (`run.py`), còn desktop client + `tools/publish.py`
+> **pin** đúng cert `certs/server.crt` để chống MITM. Chưa sinh cert? `run.py` tự lùi về HTTP kèm cảnh báo.
 
 ### Dùng Admin Dashboard
 Đăng nhập → tạo product, đăng ký payload key (dán nội dung `SECRET_payload_key.b64`),
